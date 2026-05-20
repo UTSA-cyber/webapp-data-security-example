@@ -19,7 +19,7 @@ The "Invalid Views" in the spec exist specifically to demonstrate this — a stu
 ## Pedagogical principles (do not erode these during implementation)
 
 1. **RLS is the security boundary, not the UI.** Never filter sensitive data in JavaScript "to be safe." If a query returns rows it shouldn't, the bug is in an RLS policy, not the frontend. Fix it there.
-2. **Invalid views must fail visibly.** SELECT denials are silent in Postgres (RLS returns zero rows, no error). To make the denial pedagogically visible, ship a `debug.row_visibility_diff(table_name)` SECURITY DEFINER RPC that returns the row count an administrator would see for the same query. The invalid-view panes display *"You see 0 rows. Administrator sees N. RLS filtered the other N."* INSERT/UPDATE/DELETE denials throw real Postgres errors — those go straight to toast.
+2. **Invalid views must fail visibly.** SELECT denials are silent in Postgres (RLS returns zero rows, no error). To make the denial pedagogically visible, ship a `public.admin_row_count(table_name text)` SECURITY DEFINER RPC that returns the total row count for a whitelisted table, ignoring RLS. The invalid-view panes display *"You see 0 rows. Administrator sees N. RLS filtered the other N."* INSERT/UPDATE/DELETE denials throw real Postgres errors — those go straight to toast.
 3. **The token decides access.** Role switching must re-issue the JWT (see below). UI-side role filters are forbidden — they fake the security model.
 4. **Keep the code path short.** Component → Supabase client → Postgres → RLS → result. Avoid intermediate abstractions that obscure where the denial happens.
 
