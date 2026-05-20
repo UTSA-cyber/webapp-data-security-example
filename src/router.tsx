@@ -1,19 +1,19 @@
 import { createBrowserRouter } from 'react-router-dom';
-import RootLayout from './layouts/RootLayout';
+import ProtectedLayout from './auth/ProtectedLayout';
+import LoginRedirect from './auth/LoginRedirect';
 import HomePage from './pages/HomePage';
-import LoginPage from './pages/LoginPage';
 import StudentPage from './pages/StudentPage';
 import InstructorPage from './pages/InstructorPage';
 import SupervisorPage from './pages/SupervisorPage';
 import AdminPage from './pages/AdminPage';
 
 export const router = createBrowserRouter([
+  { path: '/login', Component: LoginRedirect },
   {
     path: '/',
-    Component: RootLayout,
+    Component: ProtectedLayout,
     children: [
       { index: true, Component: HomePage },
-      { path: 'login', Component: LoginPage },
       { path: 'student', Component: StudentPage },
       { path: 'instructor', Component: InstructorPage },
       { path: 'supervisor', Component: SupervisorPage },

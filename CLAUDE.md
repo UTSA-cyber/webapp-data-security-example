@@ -4,9 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository status
 
-**Phase 1 complete (frontend scaffold).** Vite + React 19 + TypeScript + Tailwind v4 + Radix primitives + React Router + ESLint/Prettier + Supabase CLI are installed and configured. The dev server boots and serves a placeholder shell with stub pages for each role.
+**Phases 1, 2, and 3 complete.** What's wired up:
 
-**Phase 2 (data layer with RLS) is the current focus** — schema migrations, RLS policies, the role-switching RPC, pgTAP tests, and seed data have not been written yet.
+- **Phase 1 (scaffold)** — Vite + React 19 + TypeScript + Tailwind v4 + Radix primitives + React Router + ESLint/Prettier + Supabase CLI.
+- **Phase 2 (data layer)** — 9 migrations (schema, helpers, RLS-enable + auto-supervisor trigger, per-table policies, role-switch RPC). 64 pgTAP tests pass. Seed data with one organization, two sites, three demo users + extra students. Helpers `active_role_is`, `admin_row_count`, `user_supervised_site_ids`, `user_taught_classroom_ids`, `user_enrolled_classroom_ids` all in `public`.
+- **Phase 3 (frontend)** — Supabase JS client + TanStack Query + AuthProvider context + ToastProvider. Email/password login wired to GoTrue. Protected routes redirect to `/login`. Role switcher calls `switch_active_role` RPC + `refreshSession()`; auth state change invalidates all queries automatically. Per-role pages (student/instructor/supervisor/admin) display lists scoped by RLS. Invalid-view panes on student and instructor pages compare user-visible row counts to `admin_row_count` for the same table, making silent SELECT denials pedagogically visible.
+
+**Phase 4 (deployment) is the remaining work** — self-hosted Supabase docker-compose, Authentik OIDC federation, Nomad jobspecs with Vault integration. None of those files exist yet.
 
 This file records **decisions already made** with the user. Future Claude sessions should treat these as locked unless the user revisits them.
 
