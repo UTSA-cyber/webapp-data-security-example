@@ -4,7 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository status
 
-Pre-implementation. The artifacts present are `INFORMATION.md` (original spec) and this file. There is no source tree, no package manifests, no Docker/Nomad files, no SQL yet. Do not invent commands or paths — read the directory before claiming anything exists.
+**Phase 1 complete (frontend scaffold).** Vite + React 19 + TypeScript + Tailwind v4 + Radix primitives + React Router + ESLint/Prettier + Supabase CLI are installed and configured. The dev server boots and serves a placeholder shell with stub pages for each role.
+
+**Phase 2 (data layer with RLS) is the current focus** — schema migrations, RLS policies, the role-switching RPC, pgTAP tests, and seed data have not been written yet.
 
 This file records **decisions already made** with the user. Future Claude sessions should treat these as locked unless the user revisits them.
 
@@ -17,7 +19,7 @@ The "Invalid Views" in the spec exist specifically to demonstrate this — a stu
 ## Pedagogical principles (do not erode these during implementation)
 
 1. **RLS is the security boundary, not the UI.** Never filter sensitive data in JavaScript "to be safe." If a query returns rows it shouldn't, the bug is in an RLS policy, not the frontend. Fix it there.
-2. **Invalid views must fail visibly.** When a query is denied, surface an empty result *and* a toast carrying the RLS error. Silent empty states defeat the lesson.
+2. **Invalid views must fail visibly.** SELECT denials are silent in Postgres (RLS returns zero rows, no error). To make the denial pedagogically visible, ship a `debug.row_visibility_diff(table_name)` SECURITY DEFINER RPC that returns the row count an administrator would see for the same query. The invalid-view panes display *"You see 0 rows. Administrator sees N. RLS filtered the other N."* INSERT/UPDATE/DELETE denials throw real Postgres errors — those go straight to toast.
 3. **The token decides access.** Role switching must re-issue the JWT (see below). UI-side role filters are forbidden — they fake the security model.
 4. **Keep the code path short.** Component → Supabase client → Postgres → RLS → result. Avoid intermediate abstractions that obscure where the denial happens.
 
@@ -25,14 +27,14 @@ The "Invalid Views" in the spec exist specifically to demonstrate this — a stu
 
 Four roles: `student`, `instructor`, `supervisor`, `administrator`. Role assignment is via `Memberships` (users ↔ roles), and **multi-role users are real**: a user can be an instructor in one classroom and a student in another at a different site. RLS policies must be written against the membership relation and the user's currently-active role, never assuming a single role per user.
 
-Per-role visibility:
+Per-role SELECT visibility:
 
-- **student** — only courses they're enrolled in (via `Enrollments`)
-- **instructor** — only classrooms they teach (via `Classrooms.instructor_id` or join)
-- **supervisor** — only sites assigned to them via a `site_supervisors` join, plus the classrooms and instructors that descend from those sites
-- **administrator** — everything
+- **student** — only courses they're enrolled in (via `enrollments`)
+- **instructor** — **only** classrooms where `classrooms.instructor_id = auth.uid()`. Not the broader "everything at sites I'm a member of" reading. `site_instructors` membership is the *gate for INSERTing* new classrooms (where they can teach), not what they currently teach.
+- **supervisor** — sites they appear in via `site_supervisors`, plus the classrooms, instructors, courses, and enrollments that descend from those sites and their parent organizations
+- **administrator** — **global** (not scoped to any organization). One admin can read/write any organization.
 
-Default role on signup is `student`. New roles beyond that are assigned by an administrator.
+Default role on signup is `student`. New role memberships are admin-assigned only.
 
 ### Active-role JWT claim (load-bearing design)
 
@@ -47,9 +49,22 @@ This is the load-bearing teaching moment: the token determines what the database
 
 ## Data model (planned tables)
 
-`users`, `roles`, `memberships`, `courses`, `classrooms` (site + course + instructor), `enrollments` (student ↔ classroom), `sites`, `site_supervisors` (supervisor ↔ site).
+```
+organizations  (1) ─── (N)  sites  (1) ─── (N)  classrooms  (N) ─── (1)  courses
+                              │                      │                       │
+                              ├─ site_supervisors    ├─ instructor_id ─→ users    (organization scopes courses)
+                              │  (N↔N users)         │
+                              ├─ site_instructors    └─ enrollments ─→ users  [students]
+                              │  (N↔N users)
+```
 
-The supervisor → site → classroom → instructor/enrollment chain is the load-bearing relationship for RLS — supervisor policies traverse it.
+Tables: `organizations`, `users`, `roles`, `memberships`, `sites`, `site_supervisors`, `site_instructors`, `courses`, `classrooms`, `enrollments`.
+
+**Cross-org integrity invariant.** A classroom's `course.organization_id` must equal its `site.organization_id`. Enforced via INSERT/UPDATE trigger on `classrooms`. You can't run an Org A course at an Org B site.
+
+**Auto-assign on site creation.** An INSERT trigger on `sites` adds the creating user to `site_supervisors` for the new row. Without this, a supervisor would lose visibility of the site they just created.
+
+**Load-bearing traversals.** The supervisor → site → classroom → enrollment/instructor chain is what supervisor RLS policies walk; the student → enrollment → classroom → course chain is what student policies walk. Both must be indexed (FKs alone are insufficient — see migration `001_schema.sql`).
 
 ## Tech stack (locked)
 
@@ -60,6 +75,30 @@ The supervisor → site → classroom → instructor/enrollment chain is the loa
 - **Testing (RLS):** pgTAP. For each role, assert which rows are visible and which queries are denied. RLS bugs are silent and dangerous — these tests are not optional.
 
 These are constraints, not suggestions. Do not substitute (no Next.js, no separate ORM bypassing PostgREST, no alternate UI library).
+
+## Mutation policy matrix (locked)
+
+`*` means INSERT, UPDATE, and DELETE. "self only" on UPDATE means the user's own row (id = auth.uid()) with `WITH CHECK` preventing identity-changing updates.
+
+| Table / Op | Administrator | Supervisor | Instructor | Student |
+|---|---|---|---|---|
+| `organizations` * | ✅ all | ❌ | ❌ | ❌ |
+| `users` INSERT / DELETE | ✅ | ❌ | ❌ | ❌ |
+| `users` UPDATE | ✅ all | self only | self only | self only |
+| `roles` * | ✅ all | ❌ | ❌ | ❌ |
+| `memberships` * | ✅ all | ❌ | ❌ | ❌ |
+| `sites` INSERT | ✅ | ✅ *(creator auto-added to `site_supervisors` via trigger)* | ❌ | ❌ |
+| `sites` UPDATE | ✅ | own supervised sites | ❌ | ❌ |
+| `sites` DELETE | ✅ | ❌ *(admin-only — destructive)* | ❌ | ❌ |
+| `site_supervisors` * | ✅ | own supervised sites *(supervisors may add co-supervisors)* | ❌ | ❌ |
+| `site_instructors` * | ✅ | own supervised sites | ❌ | ❌ |
+| `courses` * | ✅ all | own organizations *(via "supervises ≥ 1 site in this org")* | ❌ | ❌ |
+| `classrooms` INSERT | ✅ | site ∈ own supervised sites + course in same org | site ∈ own `site_instructors` rows + `instructor_id = me` + course in same org | ❌ |
+| `classrooms` UPDATE | ✅ | site ∈ own supervised sites | `instructor_id = me` | ❌ |
+| `classrooms` DELETE | ✅ | site ∈ own supervised sites | ❌ | ❌ |
+| `enrollments` * | ✅ | classroom.site ∈ own sites | classroom_id ∈ own classrooms | ❌ |
+
+The helper `active_role_is(role)` gates every policy and double-checks the membership (defense in depth — even a tampered JWT claim doesn't pass without an actual membership row).
 
 ## Authentication
 
@@ -78,13 +117,17 @@ These are constraints, not suggestions. Do not substitute (no Next.js, no separa
 
 ## Seed data
 
-Three demo users to exercise the role switcher:
+One organization, two sites, three demo users:
 
-- **User 1** — administrator. Sees everything.
-- **User 2** — supervisor of Site A, instructor of Classroom A1 (Site A), student in Classroom B1 (Site B). Exercises all three non-admin roles via the switcher.
-- **User 3** — instructor of Classroom B1. Single role.
+- **Organization** — "Example University" (single org; suffices to exercise the org → site → classroom chain).
+- **Site A** and **Site B**, both under the organization.
+- **Courses** — at least one course at the org level (e.g. "MATH 101"), shared between sites.
+- **User 1** — administrator (global). Sees everything.
+- **User 2** — `site_supervisors` of Site A + `site_instructors` of Site A + instructor of Classroom A1 (at Site A) + enrolled as student in Classroom B1 (at Site B). Exercises supervisor / instructor / student via the switcher.
+- **User 3** — `site_instructors` of Site B + instructor of Classroom B1. Single role.
+- A handful of additional student users enrolled in both classrooms so list views aren't trivially small.
 
-Plus Site A and Site B, at least one course/classroom each, and a handful of other students so list views aren't trivially empty.
+This topology satisfies the "instructor of one classroom can be a student of another at a different site under a different instructor" constraint while keeping the seed surface small.
 
 ## Working style
 
