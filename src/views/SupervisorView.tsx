@@ -7,7 +7,7 @@ import {
   useUsers,
 } from '../hooks/useResources';
 
-export default function SupervisorPage() {
+export default function SupervisorView() {
   const sites = useSites();
   const classrooms = useClassrooms();
   const courses = useCourses();

@@ -57,6 +57,9 @@ export function useClassrooms() {
   return useQuery({
     queryKey: useRoleScopedKey('classrooms'),
     queryFn: async () => {
+      // !instructor_id disambiguates: from classrooms there are two paths
+      // to users (direct via instructor_id, and M2M through enrollments
+      // which PostgREST detects as a junction table from its composite PK).
       const { data, error } = await supabase
         .from('classrooms')
         .select(`
@@ -64,7 +67,7 @@ export function useClassrooms() {
           name,
           course:courses(course_number),
           site:sites(name),
-          instructor:users(full_name)
+          instructor:users!instructor_id(full_name)
         `)
         .order('name');
       if (error) throw error;

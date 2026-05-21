@@ -8,7 +8,7 @@ import {
   useUsers,
 } from '../hooks/useResources';
 
-export default function AdminPage() {
+export default function AdministratorView() {
   const orgs = useOrganizations();
   const sites = useSites();
   const courses = useCourses();

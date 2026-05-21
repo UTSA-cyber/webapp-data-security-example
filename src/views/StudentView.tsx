@@ -2,7 +2,7 @@ import DataCard from '../components/DataCard';
 import InvalidViewPane from '../components/InvalidViewPane';
 import { useClassrooms, useCourses, useEnrollments, useSites } from '../hooks/useResources';
 
-export default function StudentPage() {
+export default function StudentView() {
   const courses = useCourses();
   const classrooms = useClassrooms();
   const enrollments = useEnrollments();
