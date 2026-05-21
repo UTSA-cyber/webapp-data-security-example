@@ -1,6 +1,9 @@
 # Dependencies
 node_modules/
 
+# Vite dependency cache
+.vite/
+
 # Build output
 dist/
 dist-ssr/
