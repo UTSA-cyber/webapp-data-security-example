@@ -98,12 +98,20 @@ create table public.enrollments (
 -- onto classrooms. Trigger keeps the invariant honest at write time.
 -- =========================================================================
 
+-- SECURITY DEFINER so the integrity check reads sites/courses without being
+-- subject to caller RLS. Otherwise a future policy change that hid one of
+-- the parent rows from the inserting user would silently turn this into a
+-- no-op (SELECT INTO returns NULL, NULL IS DISTINCT FROM NULL is FALSE, and
+-- the cross-org invariant gets bypassed). Empty search_path defends against
+-- schema hijacking; every reference below is fully qualified.
 create function public.enforce_classroom_org_integrity()
 returns trigger
 language plpgsql
+security definer
+set search_path = ''
 as $$
 declare
-  site_org  uuid;
+  site_org   uuid;
   course_org uuid;
 begin
   select organization_id into site_org   from public.sites   where id = new.site_id;
