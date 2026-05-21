@@ -2,6 +2,35 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Repository layout
+
+```
+/                       # Root: project-level docs, deploy artifacts, Supabase config
+├── frontend/           # The entire React + Vite application
+│   ├── src/
+│   ├── package.json
+│   ├── vite.config.ts
+│   ├── tsconfig*.json
+│   ├── eslint.config.js
+│   └── .env.local      # VITE_SUPABASE_URL + key (gitignored)
+├── supabase/           # Database: stays at root for the Supabase CLI tooling
+│   ├── migrations/     # 9 SQL migrations — schema, helpers, RLS, RPC
+│   ├── seed.sql
+│   ├── tests/database/ # pgTAP tests
+│   └── config.toml
+├── deploy/             # Phase 4: docker-compose, Dockerfile, Nomad, Vault
+│   ├── Dockerfile.app  # builds frontend/ into an nginx-served image
+│   ├── nginx.conf
+│   └── .env.example
+├── CLAUDE.md
+└── INFORMATION.md
+```
+
+Frontend commands run from `frontend/`: `cd frontend && npm run dev`. Database
+commands run from root: `npx supabase start`, `npx supabase test db`. Docker
+builds run from root with `-f deploy/Dockerfile.app .` so the build context
+sees both `frontend/` and `deploy/`.
+
 ## Repository status
 
 **Phases 1, 2, and 3 complete.** What's wired up:

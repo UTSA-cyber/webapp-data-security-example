@@ -1,0 +1,11 @@
+node_modules
+dist
+.git
+.env
+.env.local
+.env.*.local
+supabase/.branches
+supabase/.temp
+# deploy/ stays in context: the Dockerfile lives there and references nginx.conf
+*.log
+.DS_Store
