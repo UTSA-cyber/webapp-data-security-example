@@ -1,0 +1,56 @@
+# Authentik blueprint: provisions the OIDC provider and application that
+# GoTrue federates to. Auto-applied on Authentik's first boot.
+#
+# After first boot, the OIDC client_id and client_secret declared below
+# need to be set on the GoTrue side via GOTRUE_EXTERNAL_KEYCLOAK_CLIENT_ID
+# and GOTRUE_EXTERNAL_KEYCLOAK_SECRET (see deploy/.env.example).
+#
+# To regenerate the client secret: edit AUTHENTIK_WEBAPP_CLIENT_SECRET in
+# .env and re-apply the blueprint via Authentik UI, or just delete the
+# blueprint entry and re-create.
+
+version: 1
+metadata:
+  name: webapp-oidc-provider
+  labels:
+    blueprints.goauthentik.io/instantiate: "true"
+
+entries:
+  # --- Signing key (RSA) for the OIDC tokens Authentik will issue ---
+  - identifiers:
+      name: webapp-oidc-signing-key
+    model: authentik_crypto.certificatekeypair
+    state: present
+
+  # --- The OAuth2/OIDC provider ---
+  - identifiers:
+      name: webapp-provider
+    model: authentik_providers_oauth2.oauth2provider
+    attrs:
+      name: webapp-provider
+      client_type: confidential
+      client_id: !Env [AUTHENTIK_WEBAPP_CLIENT_ID, webapp-client]
+      client_secret: !Env [AUTHENTIK_WEBAPP_CLIENT_SECRET, change-me-in-env]
+      authorization_flow: !Find [authentik_flows.flow, [slug, default-provider-authorization-implicit-consent]]
+      invalidation_flow: !Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]
+      signing_key: !KeyOf webapp-oidc-signing-key
+      redirect_uris:
+        - matching_mode: strict
+          url: !Env [GOTRUE_EXTERNAL_KEYCLOAK_REDIRECT_URI, http://localhost:3000/auth/v1/callback]
+      access_code_validity: minutes=1
+      access_token_validity: minutes=10
+      refresh_token_validity: days=30
+      sub_mode: hashed_user_id
+      include_claims_in_id_token: true
+
+  # --- The Application that binds the provider to a slug used in URLs ---
+  - identifiers:
+      slug: webapp
+    model: authentik_core.application
+    attrs:
+      name: Data Security Example
+      slug: webapp
+      provider: !KeyOf webapp-provider
+      meta_launch_url: !Env [SITE_URL, http://localhost:3000]
+      open_in_new_tab: false
+      policy_engine_mode: any

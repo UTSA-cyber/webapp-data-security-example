@@ -34,6 +34,23 @@ export default function LoginPage() {
     navigate(redirectTo, { replace: true });
   }
 
+  async function handleSso() {
+    setError(null);
+    setSubmitting(true);
+    // GoTrue's keycloak-compatible provider proxies to Authentik. After the
+    // user authenticates upstream, GoTrue redirects back to redirectTo
+    // (configured server-side via GOTRUE_EXTERNAL_KEYCLOAK_REDIRECT_URI).
+    const { error: ssoError } = await supabase.auth.signInWithOAuth({
+      provider: 'keycloak',
+      options: { redirectTo: window.location.origin + redirectTo },
+    });
+    if (ssoError) {
+      setError(ssoError.message);
+      setSubmitting(false);
+    }
+    // On success the browser navigates away to the IdP — no setSubmitting(false) needed.
+  }
+
   return (
     <section className="mx-auto max-w-md">
       <h1 className="text-2xl font-semibold">Sign in</h1>
@@ -77,6 +94,29 @@ export default function LoginPage() {
           {submitting ? 'Signing in…' : 'Sign in'}
         </button>
       </form>
+
+      <div className="mt-6">
+        <div className="relative my-4">
+          <div className="absolute inset-0 flex items-center" aria-hidden="true">
+            <div className="w-full border-t border-slate-200" />
+          </div>
+          <div className="relative flex justify-center text-xs uppercase">
+            <span className="bg-slate-50 px-2 text-slate-500">or</span>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={handleSso}
+          disabled={submitting}
+          className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-900 hover:bg-slate-50 disabled:opacity-50"
+        >
+          Sign in with SSO (Authentik)
+        </button>
+        <p className="mt-2 text-xs text-slate-500">
+          Federated via GoTrue's keycloak-compatible provider. Available only when
+          Authentik is reachable (deploy/docker-compose stack).
+        </p>
+      </div>
 
       <div className="mt-8 border-t border-slate-200 pt-6">
         <p className="text-sm font-medium text-slate-700">Demo accounts</p>
